@@ -1,0 +1,388 @@
+Chain-of-Thought-prompting (CoT) is een techniek die de AI-prestaties bij complexe redeneertaken drastisch verbetert door het model te vragen stap voor stap te laten zien hoe het tot een antwoord komt.
+
+<Callout type="info" title="Laat je tussenstappen zien">
+Net zoals een wiskundeleraar leerlingen vraagt hun tussenstappen op te schrijven, vraagt CoT-prompting de AI om zijn redenering zichtbaar te maken.
+</Callout>
+
+## Het probleem dat CoT oplost
+
+AI-modellen hebben vaak moeite met redeneren in meerdere stappen wanneer ze meteen naar het antwoord moeten springen.
+
+<Compare 
+  before={{ label: "Direct antwoord (vaak fout)", content: "Vraag: Een winkel verkoopt appels voor €2 per stuk. Als je 5 of meer koopt, krijg je 20% korting. Hoeveel kosten 7 appels?\n\nAntwoord: €14 ❌" }}
+  after={{ label: "Chain of Thought (correct)", content: "Vraag: Een winkel verkoopt appels voor €2 per stuk. Als je 5 of meer koopt, krijg je 20% korting. Hoeveel kosten 7 appels?\n\nLaten we dit stap voor stap doorwerken:\n1. Normale prijs per appel: €2\n2. Aantal appels: 7\n3. Aangezien 7 ≥ 5, is de korting van toepassing\n4. Normaal totaal: 7 × €2 = €14\n5. Korting: 20% van €14 = €2,80\n6. Eindprijs: €14 - €2,80 = €11,20\n\nAntwoord: €11,20 ✓" }}
+/>
+
+## Basisprompts voor CoT
+
+### Eenvoudige triggerzinnen
+
+Voeg een van deze toe aan je prompts:
+
+<div className="my-4 grid gap-2">
+  <div className="p-3 bg-muted/50 rounded-lg font-mono text-sm">"Laten we stap voor stap denken."</div>
+  <div className="p-3 bg-muted/50 rounded-lg font-mono text-sm">"Denk hier zorgvuldig over na."</div>
+  <div className="p-3 bg-muted/50 rounded-lg font-mono text-sm">"Werk dit probleem methodisch door."</div>
+  <div className="p-3 bg-muted/50 rounded-lg font-mono text-sm">"Toon je redenering bij elke stap."</div>
+  <div className="p-3 bg-muted/50 rounded-lg font-mono text-sm">"Leg je denkproces uit."</div>
+</div>
+
+Deze zinnen doen er vooral toe bij gewone chatmodellen. Redeneermodellen, die nadenken voordat ze antwoorden, hebben ze veel minder nodig; daar komen we later in dit hoofdstuk op terug.
+
+### Expliciet om stappen vragen
+
+<TryIt 
+  title="Probeer Chain of Thought"
+  description="Vraag de AI om een probleem stap voor stap op te lossen."
+  prompt={`Los dit probleem op:
+
+Een autoverhuur kost €40 per dag plus €0,25 per kilometer. Als iemand een auto huurt voor 3 dagen en 200 kilometer rijdt, wat zijn de totale kosten?
+
+Voordat je je definitieve antwoord geeft:
+1. Identificeer welke informatie gegeven is
+2. Bepaal wat we moeten vinden
+3. Plan je aanpak
+4. Voer elke stap uit en toon je werk
+5. Verifieer je antwoord`}
+/>
+
+## Zero-Shot vs Few-Shot CoT
+
+Er zijn twee hoofdbenaderingen voor Chain-of-Thought-prompting, elk met verschillende afwegingen tussen eenvoud en controle.
+
+### Zero-Shot CoT
+
+De eenvoudigste aanpak: voeg gewoon een triggerzin toe en laat het model zelf uitzoeken hoe het redeneert. Geen voorbeelden nodig. Dit werkt verrassend goed voor veel problemen, hoewel je minder controle hebt over het redeneringsformaat.
+
+<TryIt 
+  compact
+  title="Zero-Shot CoT"
+  prompt={`Als Jan 3 appels heeft en de helft aan Marie geeft, en daarna nog 4 koopt, hoeveel heeft hij er dan?
+
+Laten we stap voor stap denken.`}
+/>
+
+**Voorbeelduitvoer:**
+```
+Laten we stap voor stap denken.
+- Jan begint met 3 appels
+- De helft van 3 is 1,5, maar we kunnen appels niet splitsen
+- Als we naar beneden afronden: Jan geeft 1 appel, houdt 2 over
+- Na het kopen van nog 4: 2 + 4 = 6 appels
+
+Antwoord: 6 appels
+```
+
+### Few-Shot CoT
+
+Voor consistentere resultaten laat je het model precies zien hoe het moet redeneren, door uitgewerkte voorbeelden te geven. Dit geeft je controle over de redeneerstijl, het formaat en het detailniveau. Het model zal je gedemonstreerde patroon nabootsen.
+
+<TryIt 
+  compact
+  title="Few-Shot CoT"
+  prompt={`Voorbeeld 1:
+V: Een bakker heeft 24 cupcakes. Ze verdeelt ze gelijk over 4 dozen. Daarna eet ze 2 cupcakes uit één doos. Hoeveel cupcakes zijn er in totaal over?
+
+A: Laten we dit doorwerken:
+- Totaal aantal cupcakes: 24
+- Cupcakes per doos: 24 ÷ 4 = 6
+- Na het eten van 2 uit één doos: 6 - 2 = 4 cupcakes in die doos
+- Totaal over: (3 dozen × 6) + 4 = 18 + 4 = 22 cupcakes
+
+Voorbeeld 2:
+V: Een trein rijdt 2 uur met 60 km/u, daarna 3 uur met 40 km/u. Wat is de gemiddelde snelheid?
+
+A: Laten we dit doorwerken:
+- Afstand bij 60 km/u: 60 × 2 = 120 kilometer
+- Afstand bij 40 km/u: 40 × 3 = 120 kilometer
+- Totale afstand: 120 + 120 = 240 kilometer
+- Totale tijd: 2 + 3 = 5 uur
+- Gemiddelde snelheid: 240 ÷ 5 = 48 km/u
+
+Los nu op:
+V: Een winkel verkoopt schriften voor €3 per stuk. Als je 10 of meer koopt, krijg je 25% korting. Hoeveel kosten 12 schriften?`}
+/>
+
+**Voorbeelduitvoer:**
+```
+A: Laten we dit doorwerken:
+- Normale prijs: €3, Aantal: 12
+- Aangezien 12 ≥ 10, is de 25% korting van toepassing
+- Normaal totaal: 12 × €3 = €36
+- Korting: 25% van €36 = €9
+- Eindprijs: €36 - €9 = €27
+```
+
+## Gestructureerde CoT-formaten
+
+Gebruik voor consistente, reproduceerbare redeneringen gestructureerde formaten met benoemde stappen. Deze frameworks zorgen ervoor dat het model geen belangrijke fasen overslaat en maken de uitvoer gemakkelijker te parsen en te controleren.
+
+### Het BREAK-formaat
+
+Een makkelijk te onthouden acroniem dat het model door een volledige probleemoplossingscyclus leidt, van begrip tot verificatie.
+
+<BREAKFramework />
+
+### Het redeneringssjabloon
+
+Een meer formele structuur die invoer, doelen en uitvoering scheidt. Uitstekend voor technische problemen waarbij je duidelijke documentatie van het oplossingsproces nodig hebt.
+
+<TryIt 
+  compact
+  title="Redeneringssjabloon"
+  prompt={`Gebruik dit sjabloon om het probleem op te lossen:
+
+GEGEVEN: [Som bekende informatie op]
+DOEL: [Wat we moeten vinden]
+AANPAK: [Strategie die we gaan gebruiken]
+STAPPEN:
+  1. [Eerste stap met redenering]
+  2. [Tweede stap met redenering]
+  ...
+VERIFICATIE: [Controleer het antwoord]
+ANTWOORD: [Definitief antwoord]
+
+Probleem: Een auto verbruikt 8 liter brandstof per 100 km. Als de tank 45 liter bevat en brandstof €1,50 per liter kost, hoeveel kost het om 300 km te rijden?`}
+/>
+
+**Voorbeelduitvoer:**
+```
+GEGEVEN: 8L/100km, tank 45L, €1,50/L, rit 300km
+DOEL: Bereken brandstofkosten
+AANPAK: Benodigde brandstof × prijs per liter
+STAPPEN:
+1. Brandstof = (300 ÷ 100) × 8 = 24 liter
+2. Kosten = 24 × €1,50 = €36
+VERIFICATIE: 24L < 45L tank ✓
+ANTWOORD: €36
+```
+
+## CoT voor verschillende probleemtypes
+
+Verschillende probleemtypes profiteren van verschillende CoT-benaderingen. Hier zijn patronen geoptimaliseerd voor veelvoorkomende scenario's.
+
+### Wiskundig redeneren
+
+Wiskundeproblemen profiteren het meest van CoT omdat elke stap voortbouwt op de vorige. Fouten stapelen zich op, dus tussenstappen tonen helpt om fouten vroeg te ontdekken. Het model moet elke berekening duidelijk labelen.
+
+<TryIt 
+  compact
+  title="Wiskunde met CoT"
+  prompt={`De omzet van een bedrijf was €1,2M in Q1. Het groeide 15% in Q2, daalde 10% in Q3, en groeide 25% in Q4. Wat was de totale jaaromzet?
+
+Loop elk kwartaal door en toon je berekeningen duidelijk.`}
+/>
+
+**Voorbeelduitvoer:**
+```
+Q1: €1.200.000 (gegeven)
+Q2: €1.200.000 × 1,15 = €1.380.000
+Q3: €1.380.000 × 0,90 = €1.242.000
+Q4: €1.242.000 × 1,25 = €1.552.500
+
+Totaal: €5.374.500
+```
+
+### Logisch redeneren
+
+Logische puzzels vereisen systematische eliminatie en hypothesetesten. CoT helpt het model beperkingen bij te houden, mogelijkheden te testen en te verifiëren dat aan alle voorwaarden is voldaan. Het draait om methodisch verkennen in plaats van gokken.
+
+<TryIt 
+  compact
+  title="Logische puzzel"
+  prompt={`Drie vrienden—Alice, Bob en Carol—hebben elk verschillende huisdieren (kat, hond, vis) en verschillende banen (leraar, ingenieur, dokter).
+
+Aanwijzingen:
+1. Alice heeft geen kat
+2. De ingenieur heeft een hond
+3. Bob is leraar
+4. Carol heeft geen vis
+5. De dokter heeft geen kat
+
+Wie heeft welk huisdier en welke baan? Redeneer systematisch, test hypotheses en toets ze aan alle aanwijzingen.`}
+/>
+
+**Voorbeelduitvoer:**
+```
+Uit aanwijzing 3: Bob = leraar
+→ Alice en Carol zijn ingenieur/dokter
+
+Hypothese A: Alice = ingenieur
+- Alice heeft hond (aanwijzing 2), Carol = dokter
+- Carol kan geen vis hebben (aanwijzing 4), dus Carol heeft kat
+- Maar de dokter heeft geen kat (aanwijzing 5) ✗
+
+Hypothese B: Carol = ingenieur
+- Carol heeft hond (aanwijzing 2), Alice = dokter
+- Alice kan geen kat hebben (aanwijzing 1), dus Alice heeft vis
+- Bob heeft kat
+
+Verificatie: Aan alle 5 aanwijzingen voldaan ✓
+Antwoord: Alice (dokter, vis), Bob (leraar, kat), Carol (ingenieur, hond)
+```
+
+### Code debuggen
+
+Debuggen profiteert van CoT omdat het het model dwingt de uitvoering te traceren in plaats van naar bugs te gokken. Door de code met concrete waarden te doorlopen, wordt het daadwerkelijke gedrag zichtbaar en worden afwijkingen van verwacht gedrag blootgelegd.
+
+<TryIt 
+  compact
+  title="Debuggen met CoT"
+  prompt={`Deze functie zou de som van even getallen in een lijst moeten retourneren, maar geeft verkeerde waarden terug. Debug stap voor stap door te traceren met de invoer [2, 3, 4, 6]:
+
+def sum_evens(numbers):
+    total = 0
+    for n in numbers:
+        if n % 2 == 0:
+            total += 1
+    return total
+
+Traceer elke stap, vind de bug en geef de oplossing.`}
+/>
+
+**Voorbeelduitvoer:**
+```
+Traceer [2, 3, 4, 6]:
+n=2: total += 1 → 1 (wacht, telt 1 op in plaats van n!)
+n=3: overslaan (oneven)
+n=4: total = 2
+n=6: total = 3
+
+BUG: "total += 1" zou "total += n" moeten zijn
+Verwacht: 12, Gekregen: 3
+Oplossing: Verander naar "total += n"
+```
+
+## Zelfconsistentie met CoT
+
+Vertrouw bij kritieke problemen niet op één enkel redeneerpad. Genereer meerdere onafhankelijke oplossingen en vergelijk resultaten. Als verschillende benaderingen convergeren naar hetzelfde antwoord, is het vertrouwen hoog. Lopen ze uiteen, dan is een zorgvuldige controle nodig.
+
+<TryIt 
+  compact
+  title="Zelfconsistentie"
+  prompt={`Los dit probleem op 3 verschillende manieren op, en geef dan je definitieve antwoord op basis van de oplossing die het meest correct lijkt:
+
+Probleem: Een boer heeft kippen en koeien. Samen hebben ze 30 koppen en 74 poten. Hoeveel kippen en hoeveel koeien heeft de boer?
+
+Aanpak 1: Algebra
+Aanpak 2: Gokken en controleren
+Aanpak 3: Logisch redeneren
+
+Vergelijk dan en geef je definitieve antwoord.`}
+/>
+
+**Voorbeelduitvoer:**
+```
+Aanpak 1 (Algebra): k + ko = 30, 2k + 4ko = 74 → k=23, ko=7
+Aanpak 2 (Gokken): Probeer 23/7 → 46 + 28 = 74 ✓
+Aanpak 3 (Logica): 30 kippen = 60 poten, 14 meer nodig → 7 koeien
+
+Alle drie komen overeen: 23 kippen, 7 koeien
+```
+
+In de oorspronkelijke vorm uit het onderzoek gaat zelfconsistentie nog een stap verder: je stuurt dezelfde prompt meerdere keren als afzonderlijke verzoeken en houdt het antwoord aan dat het vaakst terugkomt. Meerdere aanpakken vragen in één antwoord, zoals hierboven, is een lichtere versie van hetzelfde idee. Het is goedkoper, maar de pogingen zijn niet echt onafhankelijk, omdat elke poging de andere kan zien.
+
+## CoT voor besluitvorming
+
+Bij beslissingen weeg je voor- en nadelen op meerdere vlakken tegen elkaar af. CoT zorgt ervoor dat alle relevante factoren systematisch worden meegewogen, in plaats van dat er overhaast conclusies worden getrokken. Deze gestructureerde aanpak legt bovendien de redenering vast, zodat je er later op kunt teruggrijpen.
+
+<TryIt 
+  compact
+  title="Beslissingsanalyse"
+  prompt={`Moeten we overstappen op een microservices-architectuur voor onze applicatie?
+
+Context:
+- Monolithische applicatie met 50.000 regels code
+- Team van 5 ontwikkelaars
+- 100 dagelijks actieve gebruikers
+- Plannen voor 10x groei in 2 jaar
+
+Denk hier systematisch over na:
+1. Som de huidige staat op
+2. Identificeer factoren om te overwegen (teamgrootte, schaal, snelheid, toekomstige groei)
+3. Weeg elke factor af als voor/tegen
+4. Geef een aanbeveling met redenering`}
+/>
+
+**Voorbeelduitvoer:**
+```
+FACTOREN:
+- Teamgrootte (5): Te klein voor microservices ❌
+- Schaal (100 DAU): Geen schaalbehoefte ❌  
+- Snelheid: Monoliet = snellere iteratie ❌
+- Toekomstige groei: Onzekere tijdlijn ⚠️
+
+AFWEGING: 3 sterk tegen, 1 zwak voor
+
+AANBEVELING: Blijf bij monoliet, gebruik duidelijke 
+modulegrenzen om een latere overstap te vergemakkelijken.
+```
+
+## Redeneermodellen: CoT ingebouwd
+
+Chain of Thought begon als prompttruc, maar is inmiddels verhuisd naar de modellen zelf. Veel huidige modellen zijn getraind om na te denken voordat ze antwoorden: de redeneermodellen van OpenAI, Claude van Anthropic met thinking ingeschakeld, Gemini van Google en open-weight-modellen zoals DeepSeek-R1 werken een probleem eerst in stilte uit en geven dan pas hun antwoord. Meestal zie je alleen het antwoord, of een korte samenvatting van het denkwerk, terwijl de reasoning tokens wel meetellen voor je verbruik.
+
+Dit maakt het hoofdstuk niet overbodig, maar het verandert wel hoe je het toepast:
+
+- **Laat de toverformule los.** Volgens de richtlijnen van OpenAI is het onnodig om de eigen redeneermodellen te vragen "stap voor stap te denken", en soms werkt het zelfs averechts. Anthropic merkt op dat een algemene instructie als "denk grondig na" vaak beter werkt dan een zelfgeschreven stappenplan, omdat het model in zijn eigen redenering vaak verder komt dan het plan zou gaan.
+- **Beschrijf het doel, niet de route.** Besteed je woorden aan het probleem, de randvoorwaarden en hoe een goed antwoord eruitziet, en laat het model dan zelf de weg vinden.
+- **Draai aan de knop in plaats van meer te schrijven.** Deze API's bieden instellingen zoals de inspanning (*reasoning effort*) of het denkniveau (*thinking level*). Die hoger zetten levert meestal diepere redeneringen op dan in de prompt om langere uitleg vragen.
+- **Houd structuur aan als je het denkwerk wilt zien.** Sjablonen zoals BREAK of GEGEVEN/DOEL/STAPPEN blijven nuttig als je een redenering wilt die je kunt lezen, controleren of parsen, en bij modellen die niet uit zichzelf nadenken. Sommige aanbieders raden inmiddels af om hun modellen die altijd nadenken hun redenering te laten uitschrijven, dus kijk wat de richtlijnen zeggen voor het model dat je gebruikt.
+
+<Callout type="warning" title="Zichtbare redenering is geen kijkje naar binnen">
+Een redenering die het model uitschrijft, of een samenvatting van het denkwerk die het toont, is niet gegarandeerd het proces dat het antwoord werkelijk heeft opgeleverd. Onderzoek van Anthropic liet zien dat redeneermodellen vaak factoren weglaten die hen hebben beïnvloed. Zie zichtbare stappen als iets om te controleren, niet als bewijs.
+</Callout>
+
+## Wanneer gebruik je CoT?
+
+<div className="my-6 grid md:grid-cols-2 gap-4">
+  <div className="border rounded-lg bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900">
+    <p className="text-sm font-semibold text-green-700 dark:text-green-400 px-4 pt-3 flex items-center gap-2 m-0!"><IconCheck className="h-4 w-4" /> Gebruik CoT voor</p>
+    <div className="text-sm p-4 pt-2 space-y-1">
+      <p className="m-0!">**Wiskundeproblemen** — Vermindert rekenfouten</p>
+      <p className="m-0!">**Logische puzzels** — Voorkomt overgeslagen stappen</p>
+      <p className="m-0!">**Complexe analyse** — Organiseert denken</p>
+      <p className="m-0!">**Code debuggen** — Traceert uitvoering</p>
+      <p className="m-0!">**Besluitvorming** — Weegt trade-offs af</p>
+    </div>
+  </div>
+  <div className="border rounded-lg bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-900">
+    <p className="text-sm font-semibold text-red-700 dark:text-red-400 px-4 pt-3 flex items-center gap-2 m-0!"><IconX className="h-4 w-4" /> Sla CoT over bij</p>
+    <div className="text-sm p-4 pt-2 space-y-1">
+      <p className="m-0!">**Eenvoudige V&A** — Onnodige overhead</p>
+      <p className="m-0!">**Creatief schrijven** — Kan creativiteit beperken</p>
+      <p className="m-0!">**Feitelijke opzoekingen** — Geen redenering nodig</p>
+      <p className="m-0!">**Vertaling** — Directe taak</p>
+      <p className="m-0!">**Samenvatten** — Meestal eenvoudig</p>
+    </div>
+  </div>
+</div>
+
+## Beperkingen van CoT
+
+Chain of Thought is krachtig, maar geen wondermiddel. Als je de beperkingen kent, kun je het op de juiste manier toepassen.
+
+1. **Verhoogd tokengebruik** — Meer uitvoer betekent hogere kosten
+2. **Niet altijd nodig** — Eenvoudige taken profiteren er niet van
+3. **Kan wijdlopig zijn** — Mogelijk moet je om beknoptheid vragen
+4. **Redenering kan gebrekkig zijn** — CoT garandeert geen correctheid
+
+## Samenvatting
+
+<Callout type="tip" title="Belangrijkste punten">
+CoT verbetert complex redeneren drastisch door impliciete stappen expliciet te maken. Gebruik het voor wiskunde, logica, analyse en debuggen. De prijs: meer nauwkeurigheid voor meer tokens. Bij redeneermodellen, die al nadenken voordat ze antwoorden, houd je de prompt gericht op het doel en pas je in plaats daarvan de redeneerinstellingen aan.
+</Callout>
+
+<Quiz 
+  question="Wanneer zou je Chain-of-Thought-prompting NIET moeten gebruiken?"
+  options={[
+    "Wiskundeproblemen die meerdere stappen vereisen",
+    "Eenvoudige feitelijke vragen zoals 'Wat is de hoofdstad van Frankrijk?'",
+    "Code debuggen met complexe logica",
+    "Een zakelijke beslissing analyseren"
+  ]}
+  correctIndex={1}
+  explanation="Chain of Thought voegt onnodige overhead toe voor eenvoudige V&A. Het is het beste gereserveerd voor complexe redeneertaken zoals wiskunde, logische puzzels, code debuggen en analyse, waarbij het tonen van tussenstappen de nauwkeurigheid verbetert."
+/>
+
+In het volgende hoofdstuk verkennen we few-shot learning—het model leren door middel van voorbeelden.

@@ -1,0 +1,385 @@
+You ask an agent to find the open bugs in your project and draft a follow-up issue. To do that, it needs more than good instructions. It needs a way to reach your issue tracker, read the right data, and possibly create something there.
+
+This is where **tools**, **connectors**, and **MCP** come in. They are related, but they describe different parts of the setup.
+
+## Tools, APIs, Connectors, and MCP
+
+<table>
+  <thead>
+    <tr>
+      <th scope="col">Term</th>
+      <th scope="col">What it means</th>
+      <th scope="col">Issue tracker example</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Tool</td>
+      <td>A specific operation available to the agent</td>
+      <td>Search issues or create an issue</td>
+    </tr>
+    <tr>
+      <td>API</td>
+      <td>An interface software can use to communicate with another system</td>
+      <td>The tracker's endpoints for reading and writing issues</td>
+    </tr>
+    <tr>
+      <td>Connector</td>
+      <td>An integration that connects the AI application to a service or data source</td>
+      <td>The issue tracker integration, with its account connection and supported actions</td>
+    </tr>
+    <tr>
+      <td>MCP</td>
+      <td>A protocol for exchanging context and exposing capabilities to AI applications</td>
+      <td>A shared way to discover the tracker's tools and call them</td>
+    </tr>
+  </tbody>
+</table>
+
+A tool can also work locally. A calculator does not need an account connection. A file-reading tool may work entirely on your computer. An external service is only one possible source of tools.
+
+## What a Tool Actually Contains
+
+A tool usually has a **name**, a **description**, an **input schema**, and an implementation that does the work. The description helps the model decide when to use it. The schema describes the arguments it accepts.
+
+Here is a small fictional MCP tool definition:
+
+<Collapsible title="Inspect the search_issues definition">
+
+```json
+{
+  "name": "search_issues",
+  "description": "Search issues in the connected project. This tool only reads data.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": { "type": "string" },
+      "limit": { "type": "integer", "minimum": 1, "maximum": 20 }
+    },
+    "required": ["query"],
+    "additionalProperties": false
+  }
+}
+```
+
+</Collapsible>
+
+The model might request `search_issues` with `{"query": "open bugs", "limit": 3}`. The surrounding application routes that request to the implementation. The implementation queries the tracker and returns results or an error.
+
+The name and schema do not execute anything by themselves. The implementation must validate inputs, check access, and do the actual operation. A tool response is also separate from the model's final answer: the response might contain issue IDs and titles, which the model then summarizes. The [MCP tools specification](https://modelcontextprotocol.io/specification/latest/server/tools) describes how tools expose these operations.
+
+<Callout type="info" title="A request is not a result">
+"I will create an issue" is a statement. A tool call requests the operation. A successful response with the new issue's ID is evidence that it happened. Keep those three things separate.
+</Callout>
+
+### A Tool Can Stand for a Whole Workflow
+
+So far, each tool has been a single operation: search, create, export. But the implementation behind a tool's name can be much larger. It can be a whole process, written down in advance and run by a workflow engine. The agent still decides **when** to start it and **what input** to pass. Everything after that runs exactly as the process defines it, in the same order, every time.
+
+Think of a refund. A support agent may be good at understanding a frustrated customer, but you probably do not want it improvising your refund policy. Wrapped as one tool, the refund workflow checks eligibility, asks a manager for approval, and issues the credit in that order, whichever conversation started it. Approvals, deployments, and other processes where the steps *are* the policy fit the same shape. Workflow engines usually keep a record of each run, so the agent can also look up past runs and tell you which ones failed overnight and at which step, instead of guessing.
+
+AWS offers one recent example. On October 29, 2026, it [announced](https://aws.amazon.com/about-aws/whats-new/2026/10/step-functions-workflows-ai-agent-tools/) that Step Functions workflows can be used as agent tools through Amazon Bedrock AgentCore Gateway, which connects agents to tools through MCP. The idea is not tied to one vendor: a CI pipeline, an approval flow in a ticketing system, or a script your team already trusts can be offered to an agent in the same way.
+
+The trade is between two strengths. The model is flexible: it can read an unusual situation and choose a sensible next move. The workflow is predictable: the same input leads through the same steps. Leaving the moment to the agent and the steps to the workflow puts each strength where it belongs. That changes the prompt too. Describe the goal and when to call the workflow, not the steps inside it. Repeating the steps creates a second copy of the policy, one that can drift from the real one and that the model might try to follow by hand.
+
+<Compare
+  before={{ label: "Re-describing the workflow", content: "To refund a customer, first check that the order is less than 30 days old, then ask a manager, then issue the credit, then email the customer." }}
+  after={{ label: "Describing the goal and the trigger", content: "Help customers resolve billing problems. When a customer asks for a refund and you have the order ID, call the refund workflow with that ID and the reason. Report the result it returns. Do not promise a refund before the workflow confirms it." }}
+/>
+
+### A Tool Can Also Be Another Agent
+
+A second shape can hide behind a single tool name. Instead of a fixed process, the implementation can be an agent of its own. It receives a request and runs its own loop: it plans, searches, weighs what it finds, may write and run code along the way, and hands back a finished result, such as an answer with citations, a report, or a file. To the agent that called it, all of that looks like one tool call and one response.
+
+That changes what the calling agent has to do. With thin retrieval tools, the outer agent does the research itself. It decides which source to query, reads what comes back, notices a contradiction, and searches again. Every hop happens inside its own context window, and every raw result it reads stays there for the rest of the task. A specialized agent takes an **objective** instead of a sequence of tool calls. The detailed hops happen in the specialist's context rather than yours, so the outer agent's context stays shorter and its attention stays on the larger task: what you asked for, what it already knows, and what to do with the result.
+
+Two recent examples show the idea from different sides. On November 4, 2026, AlphaSense [introduced](https://www.alpha-sense.com/resources/product-articles/superanalyst-mcp/) SuperAnalyst MCP, which it describes as an agent you delegate complex financial and business research to. It plans the research, gathers sources from the company's document library, runs analysis, and returns context with citations that point back to the source passages, in whatever form the request calls for: a direct answer, a spreadsheet, or a cited evidence pack. In open source, the [GPT Researcher MCP server](https://github.com/assafelovic/gptr-mcp) does something similar for the open web. Its `deep_research` tool takes a single query and runs a whole research pass, exploring and validating several sources, which its [documentation](https://docs.gptr.dev/docs/gpt-researcher/mcp-server/getting-started) says takes around 30 to 40 seconds instead of the near-instant reply of a plain search. It returns the gathered context and sources with a research ID, which companion tools such as `write_report` and `get_research_sources` can build on. The same server also offers `quick_search` for when a fast, shallow lookup is enough, a useful reminder that both shapes can live side by side.
+
+Set this beside the workflow from the previous section. A workflow is predictable: the same input leads through the same steps every time, and that is its value. A nested agent is flexible: it chooses its own next step, and that is its value too. But flexibility brings the same questions you would ask of any agent you trust with tools. You see less of each hop, often only the result and whatever trail it chooses to return. You are trusting its sources, its judgment about which ones count, and its own care with misleading content. And a long nested run still costs tokens and time, even when they are spent out of your sight. So decide by asking where the judgment belongs. When weighing sources and choosing what to look at next *is* the expertise, give it to the specialist. When the steps *are* the policy, keep a fixed workflow.
+
+The prompt follows from that. Describe the goal and the form the answer should take, and ask for sources or a note on uncertainty when those matter. Do not list the specialist's internal steps. It has its own, and a second copy written into your prompt will only compete with them.
+
+<Compare
+  before={{ label: "Running many thin retrieval tools yourself", content: "For each of our three main suppliers, call search_filings, then search_transcripts, then search_news. Read every result, merge duplicates, decide which sources are reliable, search again wherever they disagree, and then summarize the supply risks." }}
+  after={{ label: "Delegating an objective to a specialized agent", content: "Ask the research tool what the main supply risks are for our three main suppliers over the next year. I need a short evidence pack: each risk in one sentence, a citation for every claim, and a note wherever sources disagree or the evidence is thin. Then use it to draft the risk section of my memo." }}
+/>
+
+### When There Is No API, the Screen Becomes the Tool
+
+Every tool so far has had a door built for software: an API, a connector, an MCP server. Many systems have no such door. An old internal portal, a supplier's booking site, a desktop program from another decade: people use them every day, but only through the screen. For these, some models can treat the screen itself as a tool. This is usually called **computer use**.
+
+The mechanism is the loop you already know, with pictures in place of data. The application running the model sends the task and a screenshot. The model looks at it and answers with a structured action instead of prose: click at this point, type this text, scroll down. Some tools also attach a short stated intent to each action, such as "Click the search box to type the destination," which makes a run easier to follow. The model still moves nothing by itself. The developer's own code performs the action, takes a new screenshot, and sends it back. Look, act, look again, until the task is done or someone stops the loop. Where that loop runs matters as much as how it works, and the [Bot's Computer](/book/28-persistent-bots) section of Always-On Bots looks at that question.
+
+Google made its Computer Use tool generally available in the Gemini API on October 30, 2026 ([release notes](https://ai.google.dev/gemini-api/docs/changelog)). Its [documentation](https://ai.google.dev/gemini-api/docs/computer-use) describes browser, mobile, and desktop environments, actions that carry an `intent` field, configurable safety policies that can block an action or ask for confirmation before steps such as a payment, and opt-in scanning of screenshots for hidden prompt injection. Google itself recommends close supervision for important tasks. The idea is not unique to one company: Anthropic offers a [computer use tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool) for Claude, and OpenAI offers a [computer tool](https://platform.openai.com/docs/guides/tools-computer-use) in its Responses API, both built around the same exchange of screenshots and actions that your application carries out.
+
+The trade-offs deserve plain words. Reading a screen is slower than calling an API, every screenshot costs tokens, and a moved button or an unexpected pop-up can break a run that worked yesterday. So when a real API or connector exists, prefer it, and keep computer use for the systems that leave no other way in. The screen is also an input like any other: text on a page can carry prompt injection just as a document can, and seeing it in a picture makes it no more trustworthy. And because the model can click anything a person could, risky steps such as paying, deleting, or changing data should wait for a human to confirm them.
+
+A screenshot is not the only way to see a screen, though. Operating systems and browsers already keep a second, quieter description of every window: the **accessibility tree**, the structured outline of buttons, fields, menus, and labels they publish so that screen readers can tell a person who cannot see the screen what is there and what can be pressed. An agent can read that outline too. Instead of a picture, the tool takes a snapshot that lists every element the agent can act on, each with its role, its name, and a short reference id. The model no longer has to guess that the Save button sits at a certain pair of coordinates; it asks to click the element with that reference. Then it takes a fresh snapshot and looks again, because a click that went through does not prove the screen changed. Vercel Labs has open-sourced one example for desktop apps, [agent-desktop](https://github.com/vercel-labs/agent-desktop): a command-line tool and C library under the Apache-2.0 license that reads the accessibility interfaces of macOS (the AX API), Windows (UI Automation), and Linux (AT-SPI) and returns its snapshots as JSON. Its [documentation](https://agent-browser.dev/desktop) is careful to say that it is a tool agents call, not an agent: there is no model inside, and the loop of observing, acting, and verifying stays with whoever calls it. In the browser, Microsoft's [Playwright MCP server](https://github.com/microsoft/playwright-mcp) follows the same idea, letting a model work with web pages through accessibility snapshots instead of screenshots.
+
+Each way of seeing has its strengths and its blind spots. A list of named elements usually costs fewer tokens than an image, it holds steady when a button drifts a few pixels to one side, and some tools can act through it without moving the mouse or taking focus from the person at the keyboard. But the tree shows only what an application chooses to publish. A program built without accessibility information, or a canvas, a game, or anything else drawn as bare pixels, stays invisible to it, and there the screenshot remains the way in. That is why many tools combine the two: they read the outline first and turn to the picture where the outline runs out. It also means that the care a team puts into labeling its app for people who use screen readers pays off twice, because those same labels are what an agent reads.
+
+Prompting follows the same rules as before, only with sharper edges, because a website cannot tell the model what you meant. Name the exact site and page, say where the task ends, and say what must be confirmed before anything is done.
+
+<Compare
+  before={{ label: "An open-ended errand", content: "Go online and book me a meeting room for Thursday." }}
+  after={{ label: "A page, a stopping point, a confirmation", content: "On our room booking page at rooms.example.com, find a room for six people on Thursday from 2:00 to 3:00 PM. Stop on the final confirmation screen and show me the room and time before you press Book. If no room is free, tell me and stop. Do not change or cancel any existing booking." }}
+/>
+
+## What a Connector Adds
+
+A connector packages the integration with a particular system. It may handle signing in, selecting an account or workspace, finding data, and exposing supported actions as tools. Some connectors only search or read. Others also support writes.
+
+**Connector is a product term, not one universal technical standard.** One connector might call a service's API directly. Another might use an MCP server. A third might search an index built from synced documents. Check what the specific integration supports. Microsoft's [connector overview](https://learn.microsoft.com/en-us/azure/connectors/introduction) gives one example of integrations built around APIs.
+
+Connecting an account does not mean the agent sees every file, loads all of your data into its context, or has permission to perform every action. Access depends on the account, configured scopes, the application, and the service's own permissions. Search results may also reflect an index that is older than the original documents.
+
+For the issue tracker, keep these questions separate: Is a connection configured? Which project can it access? Can it only read, or can it create issues too?
+
+## What MCP Standardizes
+
+**MCP** stands for **Model Context Protocol**. It defines a shared way for AI applications and external capability providers to communicate. It does not replace a service's API; an MCP server can use that API behind the scenes.
+
+The [MCP architecture](https://modelcontextprotocol.io/docs/learn/architecture) has three main roles:
+
+<InfoGrid columns={3} items={[
+  { label: "Host", description: "The AI application the user works in. It coordinates connections, model interactions, and permissions.", color: "blue" },
+  { label: "Client", description: "The part inside the host that maintains a connection to an MCP server.", color: "green" },
+  { label: "Server", description: "A program that exposes tools, resources, or prompts through MCP. It can run locally or remotely.", color: "amber" }
+]} />
+
+For a tool call, the client can discover the server's tools with `tools/list`. The application makes relevant tool definitions available to the model. If the model requests one, the application can send a `tools/call` request through its MCP client. The server executes or delegates the operation and returns the result.
+
+The model does not need to open a network connection itself. The application and the MCP implementation handle the communication. Compatibility still matters: the host and server must support the capabilities you want to use. Discovering a tool does not guarantee permission to run it; access checks still apply.
+
+### MCP Offers More Than Tools
+
+MCP also defines **resources** and **prompts**. These words have specific meanings in the protocol:
+
+<InfoGrid columns={3} items={[
+  { label: "Tools", description: "Operations the model can request, subject to application controls. Example: search issues.", color: "blue" },
+  { label: "Resources", description: "Data the application can make available as context. Example: a project guide identified by a URI.", color: "green" },
+  { label: "Prompts", description: "Reusable message templates users can select, with optional arguments. Example: prepare an issue triage report.", color: "amber" }
+]} />
+
+The [MCP server concepts guide](https://modelcontextprotocol.io/docs/learn/server-concepts) describes these as model-controlled tools, application-controlled resources, and user-controlled prompts. These describe the intended interaction patterns. They do not remove the application's permission checks.
+
+An MCP prompt template is not automatically a skill. A skill can package a longer procedure, references, and scripts. It may tell the agent how to use tools provided through MCP, a direct connector, or local functions.
+
+### Skills Can Travel With the Server
+
+Until recently, these two pieces usually arrived separately. A server could give an agent its tools, while the know-how for using them well lived somewhere else: in a skill installed on its own, a README, or the user's prompt. When the service changed, those instructions could quietly fall behind.
+
+MCP's official **Skills extension**, finalized in September 2026, closes much of that gap. A server can now offer not only its tools but also the skills that explain how to use them, written in the same `SKILL.md` format described in [Agents & Skills](/book/25-agents-and-skills). Tools tell an agent what it can do. Skills tell it how to do the job well. Now both can come from the same server, so the instructions live beside the service they describe and can be kept current by the people who maintain it.
+
+The mechanism builds on pieces you have already met. Each file in a skill is exposed as an MCP resource, conventionally with a `skill://` URI. A client can list a server's skills with `skills/list`, fetch one with `skills/get`, and read its supporting files with `resources/read`.
+
+<Compare
+  before={{ label: "A server with tools only", content: "The tracker server exposes search_issues and create_issue. The triage method (check for duplicates, follow the issue template) has to come from a separately installed skill or from your prompt, and it can drift when the service changes." }}
+  after={{ label: "A server that also ships a skill", content: "The same server also offers an issue-triage skill. The host sees only its name and description at first and loads the full instructions when a task calls for them. When the maintainers change the service, they can update the skill alongside it." }}
+/>
+
+The host still decides how a skill reaches the model. The model might choose one by its name and description, or the user might pick it directly. Either way, the full instructions enter the context only when they are needed, and reading a `SKILL.md` file does not activate the skill by itself.
+
+<Callout type="warning" title="A served skill is still instructions">
+A skill from a server is text entering the agent's context, and it can shape what the agent does next. It deserves the same scrutiny as the server itself. A careful host verifies the content and asks for any required approval before loading it. Like other official MCP extensions, such as MCP Apps and the Tasks extension described next, Skills is optional: it is used only when both client and server declare support. Client support is still early, so check whether your application actually loads skills from servers before relying on them.
+</Callout>
+
+### When a Tool Needs Time or an Answer
+
+Most tool calls are brief exchanges: the agent asks, the server answers, and the work moves on. Some jobs do not fit that rhythm. A deep research run, a large report export, or a build can take many minutes, and some jobs reach a point where only the user can decide what happens next. MCP offers two ideas for these moments: **Tasks**, for work that needs time, and **elicitation**, for work that needs a person.
+
+The official [Tasks extension](https://tasks.extensions.modelcontextprotocol.io/) (`io.modelcontextprotocol/tasks`) changes how a slow `tools/call` ends. Instead of holding the request open until the job is done, the server can reply right away with a durable task handle, a little like the ticket you get at a coat check. The client can look in on the task with `tasks/get`, send updates or answers with `tasks/update`, stop it with `tasks/cancel`, and collect the result when it is ready. Meanwhile, the agent is free to keep working and come back later, which matters most for [always-on bots](/book/28-persistent-bots) that run jobs while you are away. Tasks are opt-in on both sides: the client declares support with each request, and the server decides, request by request, whether to create a task. Existing tools do not gain this ability on their own; the server's author has to add it.
+
+<Compare
+  before={{ label: "A blocking tool call", content: "The agent calls export_report and waits. The request stays open for minutes. If the connection drops, no one knows whether the export finished, and the agent can do nothing else until it returns." }}
+  after={{ label: "A task handle", content: "The agent calls export_report and gets a task handle back at once. It moves on to other work, checks the task with tasks/get, and fetches the finished report when it is ready. If plans change, tasks/cancel stops it." }}
+/>
+
+[Elicitation](https://modelcontextprotocol.io/specification/latest/client/elicitation) lets a server pause and ask the user for structured input: "Deploy to staging?", "Confirm this refund?", or a missing detail the job cannot continue without. The host shows a small form, and the user can answer, decline, or cancel. Declining is a valid answer too, and the server decides what to do next. The two ideas meet naturally: a running task can pause in an `input_required` state and ask the user something mid-flight. Before a write, a question like this is a natural human-in-the-loop checkpoint, placed exactly where the decision matters.
+
+<Callout type="warning" title="A form from a server is still a request from a server">
+An elicitation comes from the server, not from your application, so it deserves the same scrutiny as any tool output. Read what it asks before you answer, and never type a password, API key, or other secret into such a form unless you trust the server. Support also differs between applications: VS Code [documents elicitation support](https://code.visualstudio.com/api/extension-guides/ai/mcp), Cursor supports elicitation, and Claude Code has added [MCP Tasks and elicitations](https://code.claude.com/docs/en/mcp) in public beta in its terminal app, though not yet everywhere it runs. The official [client support matrix](https://modelcontextprotocol.io/extensions/client-matrix) tracks which applications support which extensions, so check yours before relying on either feature.
+</Callout>
+
+### When a Server Brings Its Own Interface
+
+Every tool in this chapter so far has answered in words or data. A search returns issue IDs, an export returns a file, and the host decides how to show the result, usually as text in the conversation. Even an elicitation form is drawn by the host from a short description the server sends. That suits a sentence or a short list. It suits a sales dashboard, a project board, or a long document much less, because there the answer is something you want to look at, sort, and change with your own hands, and every small adjustment would otherwise cost another message.
+
+The **MCP Apps** extension lets a server bring its own interface. A tool can point to a UI resource: a small web page the server provides at an address that begins with `ui://`. When the tool runs, the host fetches that page and shows it inside the conversation, typically in a sandboxed frame that keeps it apart from the rest of the application. The page and the host then talk through a narrow channel of messages. The view can display the tool's results, ask for further tool calls, and let the model know what the person just did. The [MCP Apps overview](https://modelcontextprotocol.io/extensions/apps/overview) describes the mechanism in detail. The result is that a dashboard, a task board, a design canvas, or a document editor can appear inside the AI application itself, and the model and the person work on the same thing in the same view.
+
+The idea did not come from a single company. The community project [MCP-UI](https://mcpui.dev/) explored interactive views for MCP servers early on, and on October 6, 2025, OpenAI [introduced apps in ChatGPT](https://openai.com/index/introducing-apps-in-chatgpt/) together with an Apps SDK built on MCP. The MCP project proposed a shared standard the following month, building on both, and on January 26, 2026, it [announced MCP Apps](https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/) as its first official extension, with Claude, ChatGPT, Goose, and Visual Studio Code among the first hosts to support it. OpenAI's [current documentation](https://developers.openai.com/plugins/build/chatgpt-ui) says that ChatGPT implements the open standard, so the same interface can run in other compatible hosts. That is the practical value of an open extension: an app built on it is not tied to one AI application. The [client support matrix](https://modelcontextprotocol.io/extensions/client-matrix) shows which applications support it today.
+
+Anthropic's interactive connectors in Claude show how far the idea can stretch. They [launched](https://claude.com/resources/articles/interactive-tools-in-claude) that same January as compact views inside the conversation: a Slack message to review before sending, an Asana timeline, a chart from Hex. On November 10, 2026, Anthropic [extended them](https://claude.com/resources/articles/interactive-connectors-full-tool): where a connector supports it, the whole tool can now open beside the chat or fill the screen. For Confluence or Notion, that means the full editor, signed in to your own account, rather than a limited preview. You can open a Box file and compare versions before keeping a change, retouch a photo or redact a PDF with Adobe, or work on a design in Canva. When you ask Claude to change something, its edits appear in the tool as it makes them, and you approve those actions the same way you approve any other connector action. Anthropic says all of this runs on MCP Apps, and that newer parts of the extension, such as app tools and embedded sites, are in public preview for developers.
+
+What changes most is the shape of the work. Instead of reading the model's account of what it did, you watch it happen in a tool you already know. You can make a change yourself or ask the model to make it, and both land on the same page, so a correction is often a click rather than another paragraph of explanation. Your prompts change too: there is no need to describe what is on the screen when you can both see it. Some things stay the same. Claude's [help page](https://support.claude.com/en/articles/13454812-use-interactive-connectors-in-claude) notes that the model can take only the actions the connector's developer has made available, and that the view uses the same permissions you granted when you connected the tool. A richer window is not a wider door.
+
+<Compare
+  before={{ label: "Describing the page from memory", content: "Find our launch plan in Confluence, make the risks part shorter, and then tell me what you changed." }}
+  after={{ label: "Pointing at what you both see", content: "In the launch plan page I have open, shorten the Risks section to three bullet points and keep each owner's name. Leave the rest of the page as it is. I will look over your edits on the page before I approve them." }}
+/>
+
+<Callout type="warning" title="An interface from a server is still code from a server">
+An MCP App is code you did not write, running inside an application you trust. The extension is designed with that in mind: views run in sandboxed frames, servers declare in advance which outside domains they need, hosts can review a view before showing it, the messages between view and host can be logged, and hosts can ask for approval before a tool call that starts in the view. These layers limit what the code can reach. They do not make what it shows true. Text inside a view can mislead or carry an injected instruction, just like any document. So the interface is part of the same decision as the server itself, and, as a later section shows, connecting is already a trust decision. Support also varies between applications, and each host decides how much of the extension it implements, so check what yours does before relying on it.
+</Callout>
+
+Interfaces are not the only thing servers are learning to carry. On November 10, 2026, the MCP project [described](https://blog.modelcontextprotocol.io/posts/exploring-file-uploads-and-downloads-in-mcp/) an experimental files extension, `io.modelcontextprotocol/files`, for moving files between clients and tools, such as saving a large PDF from a conversation to cloud storage, without the bytes ever passing through the model. Its authors call it early work with no reference implementation yet, so read it as a direction rather than something to build on today.
+
+<Quiz
+  question="A connector opens its full editor beside the chat, and you ask the model to update a table in the open document. What is true?"
+  options={[
+    "Opening the view gives the model new permissions in the service",
+    "The edit uses the access you granted when connecting, and the host can still ask you to approve the action",
+    "Because the view runs in a sandbox, everything it shows can be trusted",
+    "The view can only work in the AI application whose company created it"
+  ]}
+  correctIndex={1}
+  explanation="An interactive view changes how you and the model work together, not what the connection may do. The model can take only the actions the connector offers, within the access you granted, and the host's usual approval still applies. A sandbox limits what the view's code can reach, but its contents still deserve judgment, and an app built on the open MCP Apps extension can run in any host that supports it."
+/>
+
+### Finding a Server and Connecting Once
+
+Before an agent can use a remote server, someone has to find it, learn how to connect, and sign in. For a long time that meant copying a URL from a README, guessing which transport to use, and repeating the setup in every application. Two kinds of help are now arriving: information a client can read **before** it connects, and connections you set up **once** and reuse.
+
+On the discovery side, MCP's **Server Cards** extension ([SEP-2127](https://modelcontextprotocol.io/seps/2127-mcp-server-cards)) was finalized on October 6, 2026. It describes a small, static document about a remote server: its name, its endpoints and transports, and the protocol versions it supports. A website can list its cards in an AI catalog at `/.well-known/ai-catalog.json`, so a client pointed at a domain can learn where and how to connect without manual setup. The card deliberately leaves out the list of tools, because the tools a server offers can change with the signed-in user. Those still come from `tools/list` after connecting.
+
+On the connection side, GitHub began rolling out [GitHub-verified MCP servers](https://github.blog/changelog/2026-10-28-connect-your-tools-to-copilot-without-all-the-setup/), which it also calls connectors, in public preview on October 28, 2026. You sign in to a service such as Slack or Sentry once, and the connection works across the Copilot app, Copilot CLI, VS Code, Copilot in the cloud, and GitHub Mobile.
+
+Tools are not only web services, either. The same day, at Android Dev Summit, Google [announced](https://developer.android.com/blog/posts/build-it-your-way-a-next-era-of-android-development) that **AppFunctions**, which it calls Android's unified tool calling layer, is now in beta. Through Android MCP, an app on your phone can offer functions such as creating a note or sending a message to an on-device agent of its own or to system-level agents, without anyone opening the app.
+
+This brings us back to an earlier point: **connector** is a product term. A server card, a verified badge, and a single sign-in make setup easier and help you trust *who* you are connecting to. They do not decide *what* you grant. You still choose which account to connect, which permissions to allow, and which actions should wait for approval. Neither discovery metadata nor verification replaces reading what the tools can actually do once they are listed.
+
+<Quiz
+  question="A remote server publishes a Server Card and appears as a verified connector in your application. What is still your job?"
+  options={[
+    "Nothing. Verification means every tool on the server is safe to run",
+    "Choosing which account and permissions to grant, and reviewing what the listed tools can do",
+    "Copying the tool list from the Server Card into your prompt",
+    "Typing the server's endpoint address into every prompt"
+  ]}
+  correctIndex={1}
+  explanation="Discovery metadata and verification help with setup and with knowing who runs the server. They do not choose your account or scopes for you, and a Server Card does not even list the tools. Review the tools after connecting, and grant only the access the task needs."
+/>
+
+### When Nobody Looks the Server Up
+
+Everything above assumes that someone actually goes looking for the server, whether a person browsing a directory or a client reading a Server Card. Often nobody does. You tell a coding agent "set up a GitHub MCP," and the agent has to choose a package on its own. If it reaches for a name it remembers rather than one it has checked, the choice comes from the model's training data, and that data is a snapshot of a moment that has already passed. Since then, a service's owner may have replaced the server or archived it, and the model has no way of knowing.
+
+Researchers at Glow Labs (Glow Security) [described exactly this](https://www.helpnetsecurity.com/2026/11/03/mcphantom-deprecated-mcp-servers/) in November 2026 after reviewing real coding session transcripts, and they named the pattern MCPhantom. In the sessions where an agent installed or suggested a deprecated MCP server, the agent appears to have filled in the package name from training data 98% of the time; in the remaining 2%, the user had asked for the old package by name. In their GitHub example, the agent passed over the server GitHub maintains itself in favor of an archived reference server it remembered. No single product was to blame: the pattern appeared across several harnesses, including Claude Code, Cursor and Codex CLI, and with models from several providers. The researchers also found four high-severity flaws in those archived servers, the most serious a remote code execution bug in the Puppeteer server that a prompt injection could reach. Because the repositories are archived, no patches are coming, although the report notes that no exploitation had been observed.
+
+Two details make the problem easy to miss. Looking the package up is not always enough: in one session the agent saw "This package is deprecated" on npm, installed it anyway, and never told the user. And because these servers usually run through `npx`, they never show up in a dependency file, so nothing in the project records that they are there. In the words of one of the researchers, "The model's memory is now a package manager with no deprecation feed."
+
+<Callout type="warning" title="An install is an action too">
+Before an agent adds a server, ask which package it chose and where it comes from. Prefer the official server from the service's owner when one exists, check that it is still maintained rather than deprecated or archived, and settle on one server per service. Treat the install as something you approve, like any other action the agent takes. Simplest of all, name the server you want in the prompt itself, so the agent has nothing to fill in from memory.
+</Callout>
+
+### Connecting Is Already a Trust Decision
+
+MCPhantom is a story about picking the wrong server. A quieter risk waits on the other side of that choice: even when you pick a remote server with care, the act of connecting to it can already do harm. A remote server runs on someone else's machine, so its code never lands on yours, and that makes a first connection feel like a free look. It is not quite one. Your client still runs on your machine, and it reads and acts on whatever the server sends back, including the addresses the server hands over when it asks you to sign in.
+
+On November 5, 2026, Pillar Security [showed how much that matters](https://www.pillar.security/blog/inspecting-the-inspector-rce-in-mcps-official-debugging-tool). Their subject was the MCP Inspector (`@modelcontextprotocol/inspector`), the official debugging tool from the MCP project. Developers point it at local and remote servers they do not trust yet, to see the tools, resources, and prompts before letting a real agent near them. On Windows and WSL, Inspector versions before 2.12.0 could be made to run arbitrary code during the OAuth sign-in with a remote server, before a single tool was listed and without anyone approving anything.
+
+The chain is short, and every link looks ordinary on its own. When a remote server asks the client to sign in, it names its own `authorization_endpoint`, the address of its login page, and that address is a string the server chooses. The client opens it automatically with `open`, a popular npm package for launching the browser. On Windows and WSL, versions of `open` before 11.0.0 placed the address inside a PowerShell command without escaping it, so PowerShell could evaluate code tucked into what was otherwise a perfectly valid https URL. The code ran while the developer was simply connecting, before the browser had even opened.
+
+The maintainers accepted the report and fixed the problem in Inspector 2.12.0, released on October 21, 2026: the release moves to `open` 11 and makes sure the URL that gets opened is the one that was checked. They also published the advisory [GHSA-q978-78c7-phqw](https://github.com/modelcontextprotocol/inspector/security/advisories/GHSA-q978-78c7-phqw). The Inspector was not alone. Two weeks earlier, Pillar had [described the same chain](https://www.pillar.security/blog/open-and-shut-remote-code-execution-in-opencode-via-mcp-oauth) in the OpenCode coding agent (`opencode-ai`). Because the root cause lies in how both tools handed a server's address to `open`, a single record, CVE-2026-119025, now covers `open`, the Inspector, and OpenCode together.
+
+The lesson reaches beyond one bug. The Inspector exists so that you can look at a hostile server without getting hurt. By treating a hostile remote server as in scope for its own reference tool, fixing the bug, and publishing an advisory, the MCP project set an expectation for every client that implements the same OAuth flow: a remote MCP server is untrusted input. Nor does a server have to start out hostile. A look-alike name, an expired domain, or a later takeover can put a malicious answer behind an address you once trusted, and that answer arrives fresh each time you connect. The Server Cards and verified badges from earlier help you choose *who* to connect to. They do not change what your client does with the reply.
+
+<Callout type="warning" title="The handshake is part of the trust boundary">
+Before you connect to a remote server, especially one you are still vetting, know which client you are connecting with and which version it is, and keep it current. On Windows and WSL, that means MCP Inspector 2.12.0 or later, OpenCode 1.18.33 or later, and `open` 11.0.0 or later in any code of your own that uses it. When you ask an agent to add or test a server for you, its harness is the client, so the same questions apply. Above all, treat connecting as a decision rather than a free look: the sign-in handshake already runs on your machine, before the first tool appears.
+</Callout>
+
+## Try a Read and a Write
+
+This example uses the same fictional tracker through two routes. Change the route, operation, or access level, then run the request. For a write, try both approving and declining it.
+
+<ToolsDemo copy={{
+  title: "Follow a tool request",
+  description: "A scripted simulation with a fictional tracker. No accounts are connected and no real issues are read or created. Connected modes use the same example account.",
+  routeLabel: "Integration route",
+  directLabel: "Direct API",
+  mcpLabel: "MCP",
+  toolLabel: "Operation",
+  readLabel: "Search issues",
+  writeLabel: "Create an issue",
+  accessLabel: "Connection access",
+  disconnectedLabel: "Disconnected",
+  readOnlyLabel: "Connected: read only",
+  readWriteLabel: "Connected: read and write",
+  appLabel: "AI application",
+  hostLabel: "AI app + MCP client",
+  connectorLabel: "Direct API connector",
+  serverLabel: "Issue tracker MCP server",
+  serviceLabel: "Issue tracker service",
+  requestLabel: "Tool request",
+  resultLabel: "Result",
+  run: "Run the request",
+  reset: "Reset",
+  approve: "Approve creation",
+  decline: "Decline",
+  query: "open bugs",
+  issueTitle: "Add a helpful empty search state",
+  policyNote: "The route changes how the request travels, not what access it has. This example app requires approval before creating an issue; that is an app policy, not a universal MCP rule. Changing a setting resets the result.",
+  states: {
+    ready: "Choose a setup and run the request. No operation has run yet.",
+    disconnected: "No connection is configured. The app cannot reach this project's issues. Choosing MCP does not connect an account or grant access.",
+    denied: "This connection can only read. Creating an issue is blocked before execution. Approval of this individual request would not add write permission.",
+    read: "The simulated search returns BUG-42: the search page is blank when no results match. The app can now give this evidence to the model. No issue was changed.",
+    approval: "Write access is available, but this app requires your approval for this action. Review the title in the request. Nothing has been created yet.",
+    created: "The simulated service confirms creation of FOLLOWUP-108 with the requested title. The model can report that ID as evidence of the result.",
+    declined: "Creation was declined. The app did not send the write operation to the service, and no new issue was created."
+  }
+}} />
+
+The read and write modes here belong to our example integration. Real permissions can be more specific. MCP gives the two sides a common protocol. It does not decide whether your account can write to the project or whether the app should ask you first. **Authentication** establishes identity; **authorization** determines allowed access. A separate approval can confirm a particular action. Remote HTTP integrations can use the [MCP authorization framework](https://modelcontextprotocol.io/specification/latest/basic/authorization); the details depend on the integration.
+
+<Quiz
+  question="A connected MCP integration has read-only access. Can the agent create an issue by using a more explicit prompt?"
+  options={[
+    "Yes, because MCP allows every operation the model requests",
+    "Yes, if the user approves that one request",
+    "No. The integration needs authorized write access before it can perform the write",
+    "Yes, if a skill includes the create_issue tool name"
+  ]}
+  correctIndex={2}
+  explanation="A prompt, skill, or action approval does not expand the connection's access. The application and service must authorize the write."
+/>
+
+## Prompting an Agent That Has Tools
+
+Tell the agent what information to look for, how to use it, and which actions you expect. Avoid assuming that a connection exists or that a tool supports every operation in the service.
+
+<Compare
+  before={{ label: "Too much left to guess", content: "Check the bugs and sort everything out." }}
+  after={{ label: "Clear outcome and boundaries", content: "Search the connected project for open bugs about empty search results. Summarize the relevant issues and include their IDs. Draft a follow-up issue if needed, but ask before creating it. If the connection or required tool is unavailable, explain what is missing. Do not claim an issue was created without a successful tool result." }}
+/>
+
+A reusable triage skill could add the method: check for duplicates, compare reproduction steps, follow the project's issue template, and report unresolved questions. The tool provides the operation. The skill explains how to use it well.
+
+Tool output still needs judgment. An issue comment, a document, or a search result can contain mistakes or text that looks like an instruction. Treat retrieved content as data, rather than allowing it to change the user's request or the application's rules. MCP support alone does not make a server or its contents trustworthy.
+
+If a read fails, the agent can report the error or try a reasonable alternative. If a write times out, it should check whether the change happened before repeating it. Otherwise, a retry might create a duplicate issue. Credentials belong in the integration's connection setup, not in the task prompt. These rules matter even more when a bot uses tools on a schedule while you are away, as described in [Always-On Bots](/book/28-persistent-bots).
+
+<Quiz
+  question="How can a connector, MCP, and a tool work together?"
+  options={[
+    "They are three names for the same thing",
+    "A connector can use MCP to expose a service operation as a tool",
+    "MCP replaces the service and stores all its data inside the model",
+    "A skill must create the network connection for every tool call"
+  ]}
+  correctIndex={1}
+  explanation="A connector is the integration, MCP can be its communication protocol, and a tool is a specific operation. A direct API integration can also provide tools without MCP."
+/>
+
+<InteractiveChecklist
+  title="Before using a new integration"
+  items={[
+    { id: "source", label: "Identify the service, project, or files the task needs" },
+    { id: "capabilities", label: "Check which tools and operations the integration actually exposes" },
+    { id: "access", label: "Check the connected identity and its read or write access" },
+    { id: "approval", label: "Decide which actions should wait for approval" },
+    { id: "evidence", label: "Check the returned evidence before reporting success" }
+  ]}
+/>
+
+The next chapter, [The Harnesses](/book/26-the-harnesses), looks at the software that coordinates these connections, instructions, and tool results across a whole task.

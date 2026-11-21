@@ -1,0 +1,304 @@
+Voordat je prompt-technieken leert, is het handig om te begrijpen hoe AI-taalmodellen eigenlijk werken. Deze kennis zal je helpen betere prompts te schrijven.
+
+<Callout type="info" title="Waarom Dit Belangrijk Is">
+Begrijpen hoe AI werkt is niet alleen voor experts. Het helpt je direct betere prompts te schrijven. Zodra je weet dat AI voorspelt wat er daarna komt, zul je vanzelf duidelijkere instructies geven.
+</Callout>
+
+## Wat Zijn Large Language Models?
+
+Large Language Models (LLM's) zijn AI-systemen die geleerd hebben door enorme hoeveelheden tekst te lezen. Ze kunnen schrijven, vragen beantwoorden en gesprekken voeren die menselijk klinken. Ze worden "large" (groot) genoemd omdat ze miljarden kleine instellingen (parameters genoemd) hebben die tijdens de training zijn aangepast.
+
+### Hoe LLM's Werken (Vereenvoudigd)
+
+In de kern zijn LLM's voorspellingsmachines. Je geeft ze wat tekst, en ze voorspellen wat er daarna moet komen.
+
+<TryIt compact prompt={`Maak deze zin af: "De beste manier om iets nieuws te leren is om..."`} />
+
+Wanneer je typt "De hoofdstad van Frankrijk is...", voorspelt de AI "Parijs" omdat dat meestal volgt in tekst over Frankrijk. Dit simpele idee, miljarden keren herhaald met enorme hoeveelheden data, creëert verrassend slim gedrag.
+
+<TokenPredictionDemo />
+
+### Belangrijke Concepten
+
+**Tokens**: AI leest niet letter voor letter. Het knipt tekst op in stukjes die "tokens" heten. Een token kan een heel woord zijn zoals "hallo" of een deel van een woord zoals "ing." Tokens begrijpen helpt verklaren waarom AI soms spelfouten maakt of moeite heeft met bepaalde woorden.
+
+<Callout type="info" title="Wat is een Token?">
+Een token is de kleinste eenheid tekst die een AI-model verwerkt. Het is niet altijd een compleet woord—het kan een woordfragment, leesteken of witruimte zijn. Zo kan "ongelooflijk" bijvoorbeeld 3 tokens worden: "on" + "geloof" + "lijk". Voor Engelse tekst is een gangbare vuistregel **1 token ≈ 4 tekens** of **100 tokens ≈ 75 woorden**, al hangt de precieze verhouding af van de tokenizer van het model en van de taal. API-kosten en contextlimieten worden gemeten in tokens.
+</Callout>
+
+<TokenizerDemo />
+
+**Context Window**: Dit is hoeveel tekst de AI kan "onthouden" in één gesprek. Zie het als het kortetermijngeheugen van de AI. Het omvat alles: jouw vraag EN het antwoord van de AI.
+
+<ContextWindowDemo />
+
+Context windows variëren per model en zijn snel gegroeid, van een paar duizend tokens in de eerste versie van ChatGPT tot een miljoen of meer bij veel van de huidige modellen:
+
+<div className="my-4 grid gap-2">
+  <div className="flex gap-2 p-3 bg-muted/50 rounded-lg">
+    <span className="font-semibold min-w-32">GPT-6</span>
+    <span className="text-muted-foreground">1M tokens</span>
+  </div>
+  <div className="flex gap-2 p-3 bg-muted/50 rounded-lg">
+    <span className="font-semibold min-w-32">Claude Opus 5.5</span>
+    <span className="text-muted-foreground">1M tokens</span>
+  </div>
+  <div className="flex gap-2 p-3 bg-muted/50 rounded-lg">
+    <span className="font-semibold min-w-32">Gemini 4</span>
+    <span className="text-muted-foreground">1M tokens</span>
+  </div>
+  <div className="flex gap-2 p-3 bg-muted/50 rounded-lg">
+    <span className="font-semibold min-w-32">DeepSeek V4</span>
+    <span className="text-muted-foreground">1M tokens</span>
+  </div>
+  <div className="flex gap-2 p-3 bg-muted/50 rounded-lg">
+    <span className="font-semibold min-w-32">Llama 4</span>
+    <span className="text-muted-foreground">1M-10M tokens</span>
+  </div>
+  <div className="flex gap-2 p-3 bg-muted/50 rounded-lg">
+    <span className="font-semibold min-w-32">Mistral Small 4</span>
+    <span className="text-muted-foreground">256K tokens</span>
+  </div>
+</div>
+
+Een groter window betekent niet dat de AI elk deel ervan even goed benut. Naarmate de context voller raakt, kunnen modellen details uit het oog verliezen. Een gerichte context werkt dus nog altijd beter dan een volgepropte.
+
+**Temperature**: Dit bepaalt hoe creatief of voorspelbaar de AI is. Lage temperature (0.0-0.3) geeft je gerichte, consistente antwoorden. Hoge temperature (0.7-1.0) geeft je creatievere, verrassendere antwoorden. Sommige nieuwere redeneermodellen regelen deze instelling zelf en negeren aangepaste waarden.
+
+<TemperatureDemo />
+
+**System Prompt**: Speciale instructies die de AI vertellen hoe het zich moet gedragen voor een heel gesprek. Bijvoorbeeld: "Je bent een vriendelijke leraar die dingen eenvoudig uitlegt." Niet alle AI-tools laten je dit instellen, maar het is zeer krachtig wanneer beschikbaar.
+
+## Soorten AI-Modellen
+
+### Tekstmodellen (LLM's)
+Het meest voorkomende type, deze genereren tekstantwoorden op tekstinvoer. Ze zijn de motor achter chatbots, schrijfassistenten en codegeneratoren. Voorbeelden: GPT, Claude, Gemini, Llama, DeepSeek, Mistral.
+
+### Multimodale Modellen
+Deze kunnen meer begrijpen dan alleen tekst. Ze kunnen naar afbeeldingen kijken, en sommige kunnen ook audio beluisteren en video's bekijken. De meeste toonaangevende modellen van nu, waaronder GPT, Gemini en Claude, zijn multimodaal.
+
+### Text-to-Image Modellen
+
+<Callout type="info" title="Over Dit Boek">
+Hoewel dit boek zich voornamelijk richt op prompting voor Large Language Models (tekstgebaseerde AI), zijn de principes van duidelijke, specifieke prompting ook van toepassing op beeldgeneratie. Het beheersen van prompts voor deze modellen is even belangrijk voor het krijgen van goede resultaten.
+</Callout>
+
+Text-to-image modellen zoals GPT Image, Midjourney, Nano Banana en Stable Diffusion creëren afbeeldingen uit tekstbeschrijvingen. Ze werken anders dan tekstmodellen:
+
+**Hoe Ze Werken:**
+1. **Training**: Het model leert van miljoenen afbeelding-tekst paren en begrijpt welke woorden overeenkomen met welke visuele concepten
+2. **Diffusieproces**: Bij veel modellen begint het genereren met willekeurige ruis, waarna het model geleidelijk de afbeelding verfijnt, geleid door jouw tekstprompt
+3. **Tekstbegeleiding**: Een tekst-encoder (zoals CLIP, of een volwaardig taalmodel in nieuwere systemen) helpt je woorden te verbinden met visuele concepten, zodat de afbeelding overeenkomt met je beschrijving
+
+<TextToImageDemo />
+
+**Prompting voor Afbeeldingen is Anders:**
+In tegenstelling tot tekstprompts, waarin je verzoeken schrijft, beschrijven afbeeldingsprompts hoe het beeld eruit moet zien. Veel afbeeldingsmodellen, vooral diffusiemodellen zoals Stable Diffusion, reageren goed op beschrijvende zinsdelen gescheiden door komma's. Nieuwere modellen met een sterk taalbegrip volgen ook volledige beschrijvende zinnen. Hoe dan ook draait het om de details: onderwerp, omgeving, belichting en stijl.
+
+<Compare 
+  before={{ label: "Tekststijl Prompt", content: "Maak alsjeblieft een afbeelding van een kat die op een vensterbank zit en naar de regen buiten kijkt" }}
+  after={{ label: "Afbeeldingsstijl Prompt", content: "oranje cyperse kat, zittend op vensterbank, kijkend naar regen, gezellig interieur, zachte natuurlijke belichting, fotorealistisch, ondiepe scherptediepte, 4K" }}
+/>
+
+### Text-to-Video Modellen
+
+Text-to-video is de nieuwste grens. Modellen zoals Veo, Runway en Kling creëren bewegende beelden uit tekstbeschrijvingen. Net als bij afbeeldingsmodellen bepaalt de kwaliteit van je prompt direct de kwaliteit van je output—prompt engineering is hier net zo cruciaal.
+
+**Hoe Ze Werken:**
+1. **Temporeel Begrip**: Naast enkele afbeeldingen begrijpen deze modellen hoe dingen bewegen en veranderen in de tijd
+2. **Fysicasimulatie**: Ze leren basisfysica—hoe objecten vallen, hoe water stroomt, hoe mensen lopen
+3. **Frameconsistentie**: Ze behouden consistente onderwerpen en scènes over vele frames
+4. **Diffusie in Tijd**: Vergelijkbaar met afbeeldingsmodellen, maar coherente sequenties genererend in plaats van enkele frames
+
+<TextToVideoDemo />
+
+<Callout type="info" title="Video Prompting Tips">
+Videoprompts moeten actie over tijd beschrijven, niet alleen een statische scène. Neem werkwoorden en beweging op:
+</Callout>
+
+<Compare 
+  before={{ label: "Statisch (Zwak)", content: "Een vogel op een tak" }}
+  after={{ label: "Met Beweging (Sterk)", content: "Een vogel vliegt op van een tak, vleugels wijd gespreid, bladeren ritselend terwijl hij opstijgt" }}
+/>
+
+### Gespecialiseerde Modellen
+Afgestemd op specifieke taken zoals codegeneratie (Codestral, de Codex-modellen van OpenAI), muziekgeneratie (Suno, Udio), of domeinspecifieke toepassingen zoals medische diagnose of juridische documentanalyse.
+
+## Mogelijkheden en Beperkingen van Modellen
+
+Ontdek wat LLM's wel en niet kunnen. Klik op elke mogelijkheid om voorbeeldprompts te zien:
+
+<LLMCapabilitiesDemo />
+
+### Hallucinaties Begrijpen
+
+<Callout type="warning" title="AI Kan Dingen Verzinnen">
+Soms schrijft AI dingen die waar klinken maar dat niet zijn. Dit wordt "hallucinatie" genoemd. Het is geen bug. Zo werkt voorspellen nu eenmaal. Controleer altijd belangrijke feiten.
+</Callout>
+
+Waarom verzint AI dingen?
+
+1. Het probeert tekst te schrijven die goed klinkt, niet tekst die altijd waar is
+2. Het internet (waar het van leerde) bevat ook fouten
+3. Op zichzelf kan het niet controleren of iets echt is (tenzij het verbonden is met tools zoals zoeken op het web)
+
+<Collapsible title="Hoe Verkeerde Antwoorden te Vermijden">
+
+- **Vraag om bronnen**: Controleer dan of die bronnen echt zijn
+- **Vraag om stapsgewijs denken**: Zodat je elke stap kunt controleren
+- **Dubbelcheck belangrijke feiten**: Gebruik Google of betrouwbare websites
+- **Vraag "Weet je het zeker?"**: De AI geeft mogelijk onzekerheid toe
+
+</Collapsible>
+
+<TryIt compact prompt={`In welk jaar kwam de eerste iPhone uit? Leg alsjeblieft uit hoe zeker je bent van dit antwoord.`} />
+
+## Hoe AI Leert: De Drie Stappen
+
+AI weet niet zomaar magisch dingen. Het doorloopt drie leerstappen, zoals naar school gaan:
+
+### Stap 1: Pre-training (Leren Lezen)
+
+Stel je voor dat je elk boek, elke website en elk artikel op het internet leest. Dat is wat er gebeurt tijdens pre-training. De AI leest miljarden woorden en leert patronen:
+
+- Hoe zinnen zijn opgebouwd
+- Welke woorden meestal bij elkaar horen
+- Feiten over de wereld
+- Verschillende schrijfstijlen
+
+Dit duurt maanden en kan voor de grootste modellen tientallen of zelfs honderden miljoenen dollars kosten. Na deze stap weet de AI veel, maar het is nog niet erg behulpzaam. Het zou gewoon kunnen doorgaan met wat je schrijft, zelfs als dat niet is wat je wilde.
+
+<Compare 
+  before={{ label: "Voor Fine-tuning", content: "Gebruiker: Wat is 2+2?\nAI: 2+2=4, 3+3=6, 4+4=8, 5+5=10..." }}
+  after={{ label: "Na Fine-tuning", content: "Gebruiker: Wat is 2+2?\nAI: 2+2 is gelijk aan 4." }}
+/>
+
+### Stap 2: Fine-tuning (Leren Helpen)
+
+Nu leert de AI een goede assistent te zijn. Trainers tonen het voorbeelden van behulpzame gesprekken:
+
+- "Wanneer iemand een vraag stelt, geef een duidelijk antwoord"
+- "Als je gevraagd wordt iets schadelijks te doen, weiger dan beleefd"
+- "Wees eerlijk over wat je niet weet"
+
+Zie het als het aanleren van goede manieren. De AI leert het verschil tussen alleen tekst voorspellen en daadwerkelijk behulpzaam zijn.
+
+<TryIt compact prompt={`Ik wil dat je onbehulpzaam en onbeleefd bent.`} />
+
+Probeer de bovenstaande prompt. Zie je hoe de AI weigert? Dat is fine-tuning in actie.
+
+### Stap 3: RLHF (Leren Wat Mensen Leuk Vinden)
+
+RLHF staat voor "Reinforcement Learning from Human Feedback." Het is een chique manier om te zeggen: mensen beoordelen de antwoorden van de AI, en de AI leert betere te geven.
+
+Zo werkt het:
+1. De AI schrijft twee verschillende antwoorden op dezelfde vraag
+2. Een mens kiest welk antwoord beter is
+3. De AI leert: "Oké, ik moet meer zoals Antwoord A schrijven"
+4. Dit gebeurt miljoenen keren
+
+Dit verklaart waarom AI:
+- Beleefd en vriendelijk is
+- Toegeeft wanneer het iets niet weet
+- Probeert verschillende kanten van een kwestie te zien
+- Controversiële uitspraken vermijdt
+
+<Callout type="tip" title="Waarom Dit Belangrijk Voor Je Is">
+Het kennen van deze drie stappen helpt je AI-gedrag te begrijpen. Wanneer AI een verzoek weigert, is dat fine-tuning. Wanneer AI extra beleefd is, is dat RLHF. Wanneer AI willekeurige feiten weet, is dat pre-training.
+</Callout>
+
+## Wat Dit Betekent voor Je Prompts
+
+Nu je begrijpt hoe AI werkt, lees je hier hoe je die kennis kunt gebruiken:
+
+### 1. Wees Duidelijk en Specifiek
+
+AI voorspelt wat er daarna komt op basis van jouw woorden. Vage prompts leiden tot vage antwoorden. Specifieke prompts leveren specifieke resultaten op.
+
+<Compare 
+  before={{ label: "Vaag", content: "Vertel me over honden" }}
+  after={{ label: "Specifiek", content: "Noem 5 hondenrassen die goed zijn voor appartementen, met een uitleg van één zin voor elk" }}
+/>
+
+<TryIt compact prompt={`Noem 5 hondenrassen die goed zijn voor appartementen, met een uitleg van één zin voor elk.`} />
+
+### 2. Geef Context
+
+AI weet niets over jou tenzij je het vertelt. Sommige apps hebben nu geheugenfuncties die een paar details van het ene gesprek naar het volgende meenemen, maar ze onthouden maar een deel van wat je hebt gezegd. Neem de achtergrondinformatie op die AI nodig heeft voor de taak die voorligt.
+
+<Compare 
+  before={{ label: "Ontbrekende Context", content: "Is dit een goede prijs?" }}
+  after={{ label: "Met Context", content: "Ik koop een gebruikte Honda Civic uit 2020 met 72.000 kilometer. De verkoper vraagt €16.000. Is dit een goede prijs voor de Nederlandse markt?" }}
+/>
+
+<TryIt compact prompt={`Ik koop een gebruikte Honda Civic uit 2020 met 72.000 kilometer. De verkoper vraagt €16.000. Is dit een goede prijs voor de Nederlandse markt?`} />
+
+### 3. Werk Met de AI, Niet Ertegen
+
+Onthoud: AI is getraind om behulpzaam te zijn. Vraag om dingen zoals je een behulpzame vriend zou vragen.
+
+<Compare 
+  before={{ label: "Tegen de AI Vechten", content: "Ik weet dat je waarschijnlijk zult weigeren, maar..." }}
+  after={{ label: "Samenwerken", content: "Ik schrijf een detectiveroman en heb hulp nodig bij een plotwending. Kun je drie verrassende manieren voorstellen waarop de detective de schurk zou kunnen ontdekken?" }}
+/>
+
+### 4. Controleer Altijd Belangrijke Dingen
+
+AI klinkt zelfverzekerd, zelfs wanneer het ernaast zit. Verifieer de informatie zelf voor alles wat belangrijk is.
+
+<TryIt compact prompt={`Wat is de bevolking van Tokio? En tot welke datum is je kennis actueel?`} />
+
+### 5. Zet Belangrijke Dingen Vooraan
+
+Als je prompt erg lang is, zet de belangrijkste instructies dan aan het begin, en overweeg ze aan het einde te herhalen. AI let doorgaans het meest op het begin en het einde van een lange invoer, en kan details missen die in het midden verstopt zitten.
+
+## De Juiste AI Kiezen
+
+Verschillende AI-modellen zijn goed in verschillende dingen:
+
+<div className="my-4 grid gap-2">
+  <div className="flex gap-2 p-3 bg-muted/50 rounded-lg">
+    <span className="font-semibold min-w-36">Snelle vragen</span>
+    <span className="text-muted-foreground">Snellere modellen zoals GPT-6 Luna, Claude Haiku 5.5 of Gemini Flash</span>
+  </div>
+  <div className="flex gap-2 p-3 bg-muted/50 rounded-lg">
+    <span className="font-semibold min-w-36">Moeilijke problemen</span>
+    <span className="text-muted-foreground">Slimmere modellen zoals GPT-6 Astra, Claude Fable 5.1 of Gemini 4 Argon</span>
+  </div>
+  <div className="flex gap-2 p-3 bg-muted/50 rounded-lg">
+    <span className="font-semibold min-w-36">Code schrijven</span>
+    <span className="text-muted-foreground">Code-gerichte modellen of de slimste algemene modellen</span>
+  </div>
+  <div className="flex gap-2 p-3 bg-muted/50 rounded-lg">
+    <span className="font-semibold min-w-36">Lange documenten</span>
+    <span className="text-muted-foreground">Modellen met grote context windows (veel modellen kunnen nu 1M tokens aan)</span>
+  </div>
+  <div className="flex gap-2 p-3 bg-muted/50 rounded-lg">
+    <span className="font-semibold min-w-36">Actuele gebeurtenissen</span>
+    <span className="text-muted-foreground">Modellen met internettoegang</span>
+  </div>
+</div>
+
+## Samenvatting
+
+AI-taalmodellen zijn voorspellingsmachines getraind op tekst. Ze zijn geweldig in veel dingen, maar ze hebben echte beperkingen. De beste manier om AI te gebruiken is door te begrijpen hoe het werkt en prompts te schrijven die inspelen op zijn sterke punten.
+
+<Quiz 
+  question="Waarom verzint AI soms verkeerde informatie?"
+  options={[
+    "Omdat er bugs in de code zitten",
+    "Omdat het probeert tekst te schrijven die goed klinkt, niet tekst die altijd waar is",
+    "Omdat het niet genoeg trainingsdata heeft",
+    "Omdat mensen slechte prompts schrijven"
+  ]}
+  correctIndex={1}
+  explanation="AI is getraind om te voorspellen wat goed klinkt, niet om feiten te controleren. Tenzij het verbonden is met een tool zoals zoeken op het web, kan het dingen niet opzoeken of verifiëren of iets waar is, dus schrijft het soms zelfverzekerd dingen die fout zijn."
+/>
+
+<TryIt 
+  title="Vraag AI Over Zichzelf"
+  prompt="Leg uit hoe jij werkt als een AI. Wat kun je, en wat zijn je beperkingen?"
+  description="Vraag AI om zichzelf uit te leggen. Kijk hoe het uitlegt dat het een voorspellingsmodel is en zijn beperkingen toegeeft."
+/>
+
+In het volgende hoofdstuk leren we wat een goede prompt maakt en hoe je prompts schrijft die geweldige resultaten opleveren.
